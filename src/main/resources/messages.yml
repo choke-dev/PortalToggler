@@ -1,0 +1,35 @@
+prefix: "<dark_gray>[</dark_gray><gradient:#ff55ff:#5555ff>PortalToggler</gradient><dark_gray>]</dark_gray>"
+
+# Mode Messages
+mode-entry: "entry"
+mode-creation: "creation"
+
+# Status Messages
+status-enabled: "<green>Enabled</green>"
+status-disabled: "<red>Disabled</red>"
+
+# Portal Messages
+portal-disabled: "<red>Disabled {portal} portal {mode}."
+portal-enabled: "<green>Enabled {portal} portal {mode}."
+
+disabled-portal-attempt: "<red>You cannot enter the {portal} as portal entry is disabled."
+disabled-end-portal-creation: "<red>You cannot insert an eye of ender into an {portal} portal frame while it is disabled."
+disabled-nether-portal-creation: "<red>You cannot create a {portal} portal while it is disabled."
+
+portal-status: "<yellow>Portal Status:"
+portal-status-single: "<yellow>{portal}\n<gray>- Entry: {entry-status}\n<gray>- Creation: {creation-status}"
+
+# Command Messages
+no-permission: "<red>You don't have permission to use this command."
+command-usage: "<red>Usage: /portal <toggle|enable|disable> <nether|end> <entry|creation>"
+reload-success: "<green>Configuration reloaded successfully!"
+reload-failed: "<red>Failed to reload configuration!"
+invalid-mode: "<red>Invalid mode. Use 'entry' or 'creation'."
+
+# Help Messages
+help-header: "<yellow>=== PortalToggler Commands ==="
+help-reload: "<gray>/portal reload <gray>- Reload the plugin configuration"
+help-toggle: "<gray>/portal toggle <nether|end> <entry|creation> <gray>- Toggle a portal's state"
+help-status: "<gray>/portal status [nether|end] <gray>- Check portal states"
+help-enable: "<gray>/portal enable <nether|end> <entry|creation> <gray>- Enable a portal"
+help-disable: "<gray>/portal disable <nether|end> <entry|creation> <gray>- Disable a portal"

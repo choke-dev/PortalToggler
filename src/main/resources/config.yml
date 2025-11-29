@@ -1,0 +1,17 @@
+# PortalToggler Configuration
+
+# Debug Settings
+debug: false
+
+# Portal Settings
+portals:
+  nether:
+    entry:
+      enabled: true
+    creation:
+      enabled: true
+  end:
+    entry:
+      enabled: true
+    creation:
+      enabled: true 
