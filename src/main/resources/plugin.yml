@@ -26,3 +26,5 @@ permissions:
   portaltoggler.bypass.create.end:
     description: Allows bypassing end portal creation restrictions
     default: op
+
+modrinth-project-id: "rgyRr8kz"
