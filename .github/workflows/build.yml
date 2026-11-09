@@ -1,0 +1,76 @@
+name: Build & Release
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish to Modrinth?'
+        type: boolean
+        default: false
+      version:
+        description: 'Version number to publish (e.g. 1.0.0), required if publishing'
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - run: chmod +x gradlew && ./gradlew build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PortalToggler
+          path: build/libs/*.jar
+
+  publish:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: PortalToggler
+          path: dist
+
+      - name: Work out version
+        id: v
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+          test -n "$VERSION" || { echo "No version given"; exit 1; }
+          test -f "dist/PortalToggler-$VERSION.jar" || { echo "dist/PortalToggler-$VERSION.jar not found; version in build.gradle.kts must match"; ls dist; exit 1; }
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - uses: cloudnode-pro/modrinth-publish@v2   # check the repo's README for the current tag
+        with:
+          token: ${{ secrets.MODRINTH_TOKEN }}
+          project: ${{ vars.MODRINTH_PROJECT_ID }}
+          version: ${{ steps.v.outputs.version }}
+          loaders: |-
+            paper
+            purpur
+          game-versions: |-
+            1.18.2
+            1.19.x
+            1.20.x
+            1.21.x
+            26.1.x
+            26.2.x
+            26.3.x
+          files: dist/PortalToggler-${{ steps.v.outputs.version }}.jar
