@@ -1,18 +1,21 @@
 name: PortalToggler
-version: '${project.version}'
+version: '${version}'
 main: dev.choke.portalToggler.PortalToggler
-api-version: '1.20'
+api-version: '1.18'
 authors: [chokedd]
 description: A plugin to toggle nether and end portals
 commands:
   portal:
     description: Main command for PortalToggler
-    usage: /<command> [help|reload|toggle|status|enable|disable]
+    usage: /<command> [help|reload|toggle|status|enable|disable|unlock]
     aliases: [portaltoggler]
 
 permissions:
   portaltoggler.admin:
     description: Allows access to all PortalToggler commands
+    default: op
+  portaltoggler.admin.unlock:
+    description: Allows removing portal locks placed by other plugins (/portal unlock)
     default: op
   portaltoggler.bypass.enter.nether:
     description: Allows bypassing nether portal entry restrictions

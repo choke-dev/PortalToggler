@@ -3,7 +3,10 @@ package dev.choke.portalToggler;
 import dev.choke.portalToggler.commands.PortalCommand;
 import dev.choke.portalToggler.config.ConfigManager;
 import dev.choke.portalToggler.config.MessageManager;
+import dev.choke.portalToggler.api.PortalTogglerAPI;
+import dev.choke.portalToggler.internal.PortalTogglerAPIImpl;
 import dev.choke.portalToggler.listeners.PortalManager;
+import org.bukkit.plugin.ServicePriority;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.Objects;
@@ -11,6 +14,7 @@ import java.util.Objects;
 public final class PortalToggler extends JavaPlugin {
     private ConfigManager configManager;
     private MessageManager messageManager;
+    private PortalTogglerAPIImpl api;
     private static PortalToggler instance;
 
     public static PortalToggler getInstance() {
@@ -30,16 +34,25 @@ public final class PortalToggler extends JavaPlugin {
 
         messageManager = new MessageManager(this);
 
-        PortalManager portalManager = new PortalManager(this);
+        api = new PortalTogglerAPIImpl(this, configManager);
+        getServer().getPluginManager().registerEvents(api, this);
+        getServer().getServicesManager().register(PortalTogglerAPI.class, api, this, ServicePriority.Normal);
+
+        PortalManager portalManager = new PortalManager(this, api);
         getServer().getPluginManager().registerEvents(portalManager, this);
 
-        Objects.requireNonNull(getCommand("portal")).setExecutor(new PortalCommand(this));
+        Objects.requireNonNull(getCommand("portal")).setExecutor(new PortalCommand(this, api));
 
         getLogger().info("Enabled " + getName() + " v" + getDescription().getVersion());
     }
 
     @Override
     public void onDisable() {
+        getServer().getServicesManager().unregisterAll(this);
+        if (api != null) {
+            api.clear();
+        }
+
         // Save configurations before shutdown
         if (configManager != null) {
             configManager.saveConfig();

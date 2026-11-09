@@ -11,13 +11,21 @@ status-disabled: "<red>Disabled</red>"
 # Portal Messages
 portal-disabled: "<red>Disabled {portal} portal {mode}."
 portal-enabled: "<green>Enabled {portal} portal {mode}."
+portal-enabled-but-locked: "<yellow>Enabled {portal} portal {mode} in config, but it is still locked by {plugins}. Use /portal unlock to remove the lock."
 
 disabled-portal-attempt: "<red>You cannot enter the {portal} as portal entry is disabled."
 disabled-end-portal-creation: "<red>You cannot insert an eye of ender into an {portal} portal frame while it is disabled."
 disabled-nether-portal-creation: "<red>You cannot create a {portal} portal while it is disabled."
 
 portal-status: "<yellow>Portal Status:"
-portal-status-single: "<yellow>{portal}\n<gray>- Entry: {entry-status}\n<gray>- Creation: {creation-status}"
+portal-status-header: "<yellow>{portal}"
+portal-status-line: "<gray>- {mode}: {effective-status} <dark_gray>(config: {config-status}<dark_gray>)"
+portal-status-lock: "<gray>    locked by <white>{plugin}</white>: <italic>{reason}"
+
+# Unlock Messages
+unlock-usage: "<red>Usage: /portal unlock <nether|end> <entry|creation> [plugin]"
+unlock-success: "<green>Removed {count} lock(s) on {portal} portal {mode}: {plugins}. <gray>The plugins may lock it again."
+unlock-none: "<yellow>No matching locks on {portal} portal {mode}."
 
 # Command Messages
 no-permission: "<red>You don't have permission to use this command."
@@ -25,6 +33,7 @@ command-usage: "<red>Usage: /portal <toggle|enable|disable> <nether|end> <entry|
 reload-success: "<green>Configuration reloaded successfully!"
 reload-failed: "<red>Failed to reload configuration!"
 invalid-mode: "<red>Invalid mode. Use 'entry' or 'creation'."
+invalid-portal-type: "<red>Invalid portal type. Use 'nether' or 'end'."
 
 # Help Messages
 help-header: "<yellow>=== PortalToggler Commands ==="
@@ -33,3 +42,4 @@ help-toggle: "<gray>/portal toggle <nether|end> <entry|creation> <gray>- Toggle 
 help-status: "<gray>/portal status [nether|end] <gray>- Check portal states"
 help-enable: "<gray>/portal enable <nether|end> <entry|creation> <gray>- Enable a portal"
 help-disable: "<gray>/portal disable <nether|end> <entry|creation> <gray>- Disable a portal"
+help-unlock: "<gray>/portal unlock <nether|end> <entry|creation> [plugin] <gray>- Remove plugin locks from a portal"

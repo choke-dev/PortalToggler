@@ -31,6 +31,9 @@ PortalToggler lets server admins easily enable or disable Nether/End portal entr
 | `/portal status [nether\|end]` | Check portal status (all or specific) | `portaltoggler.admin` |
 | `/portal enable <nether\|end> <entry\|creation>` | Enable specific portal function | `portaltoggler.admin` |
 | `/portal disable <nether\|end> <entry\|creation>` | Disable specific portal function | `portaltoggler.admin` |
+| `/portal unlock <nether\|end> <entry\|creation> [plugin]` | Remove locks other plugins placed via the API (one plugin, or all) | `portaltoggler.admin.unlock` |
+
+`/portal status` shows each portal's config value, its effective state, and any plugins currently locking it (with their reasons). A portal is only open when the config enables it **and** no plugin holds a lock.
 
 ## Configuration
 
@@ -119,7 +122,8 @@ reload-success: "<green>Configuration reloaded successfully!"
 
 | Permission | Description | Default |
 |------------|-------------|---------|
-| `portaltoggler.admin` | Access to all plugin commands | op |
+| `portaltoggler.admin` | Access to all plugin commands except `unlock` | op |
+| `portaltoggler.admin.unlock` | Remove plugin locks with `/portal unlock` | op |
 | `portaltoggler.bypass.enter.nether` | Bypass nether portal entry restrictions | op |
 | `portaltoggler.bypass.enter.end` | Bypass end portal entry restrictions | op |
 | `portaltoggler.bypass.create.nether` | Bypass nether portal creation restrictions | op |
@@ -142,6 +146,25 @@ reload-success: "<green>Configuration reloaded successfully!"
 /pex group admin add portaltoggler.admin
 /pex group vip add portaltoggler.bypass.enter.nether
 ```
+
+## API for Developers
+
+Other plugins can temporarily disable a portal action. Locks are per plugin, in memory only (never written to `config.yml`), and released automatically when your plugin is disabled. Compile against the PortalToggler jar as `compileOnly` and add `softdepend: [PortalToggler]` (or `depend`) to your `plugin.yml`.
+
+```java
+RegisteredServiceProvider<PortalTogglerAPI> rsp =
+        Bukkit.getServicesManager().getRegistration(PortalTogglerAPI.class);
+if (rsp != null) {
+    PortalTogglerAPI api = rsp.getProvider();
+    api.disable(this, PortalTogglerAPI.PortalType.END, PortalTogglerAPI.Action.ENTRY, "Dragon event running");
+    // ... later
+    api.release(this, PortalTogglerAPI.PortalType.END, PortalTogglerAPI.Action.ENTRY);
+}
+```
+
+- `isEnabled(portal, action)`: `true` only if the config enables it and no plugin holds a lock.
+- `apiVersion()`: the running API version, for feature checks.
+- Admins can remove your lock with `/portal unlock`. PortalToggler then fires `PortalLockReleasedEvent` (reason `ADMIN`); call `disable()` again if you need the lock back.
 
 ## Building from Source
 

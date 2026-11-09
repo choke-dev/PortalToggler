@@ -1,9 +1,13 @@
 package dev.choke.portalToggler.commands;
 
 import dev.choke.portalToggler.PortalToggler;
+import dev.choke.portalToggler.api.PortalTogglerAPI.Action;
+import dev.choke.portalToggler.api.PortalTogglerAPI.PortalType;
 import dev.choke.portalToggler.config.ConfigManager;
 import dev.choke.portalToggler.config.MessageManager;
+import dev.choke.portalToggler.internal.PortalTogglerAPIImpl;
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
@@ -14,15 +18,24 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 public class PortalCommand implements CommandExecutor, TabCompleter {
+    private static final String ADMIN_PERMISSION = "portaltoggler.admin";
+    private static final String UNLOCK_PERMISSION = "portaltoggler.admin.unlock";
+
     private final ConfigManager configManager;
     private final MessageManager messageManager;
+    private final PortalTogglerAPIImpl api;
 
-    public PortalCommand(PortalToggler plugin) {
+    public PortalCommand(PortalToggler plugin, PortalTogglerAPIImpl api) {
         this.configManager = plugin.getConfigManager();
         this.messageManager = plugin.getMessages();
+        this.api = api;
     }
 
     @Override
@@ -32,165 +45,143 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
             return true;
         }
 
-        switch (args[0].toLowerCase()) {
-            case "reload":
-                if (!sender.hasPermission("portaltoggler.admin")) {
+        String sub = args[0].toLowerCase(Locale.ROOT);
+        if (sub.equals("unlock")) {
+            if (!sender.hasPermission(UNLOCK_PERMISSION)) {
+                sendMessage(sender, "no-permission");
+                return true;
+            }
+            if (args.length < 3) {
+                sendMessage(sender, "unlock-usage");
+                return true;
+            }
+            handleUnlock(sender, args[1], args[2], args.length > 3 ? args[3] : null);
+            return true;
+        }
+
+        switch (sub) {
+            case "reload", "toggle", "status", "enable", "disable" -> {
+                if (!sender.hasPermission(ADMIN_PERMISSION)) {
                     sendMessage(sender, "no-permission");
                     return true;
                 }
+            }
+            default -> {
+                sendHelp(sender);
+                return true;
+            }
+        }
+
+        switch (sub) {
+            case "reload" -> {
                 configManager.reloadConfig();
                 messageManager.reloadConfig();
                 sendMessage(sender, "reload-success");
-                return true;
-
-            case "toggle":
-                if (!sender.hasPermission("portaltoggler.admin")) {
-                    sendMessage(sender, "no-permission");
-                    return true;
-                }
+            }
+            case "status" -> handleStatus(sender, args.length > 1 ? args[1] : null);
+            default -> { // toggle, enable, disable
                 if (args.length < 3) {
                     sendMessage(sender, "command-usage");
                     return true;
                 }
-                handleToggle(sender, args[1], args[2]);
-                return true;
-
-            case "status":
-                if (!sender.hasPermission("portaltoggler.admin")) {
-                    sendMessage(sender, "no-permission");
-                    return true;
-                }
-                handleStatus(sender, args.length > 1 ? args[1] : null);
-                return true;
-
-            case "enable":
-            case "disable":
-                if (!sender.hasPermission("portaltoggler.admin")) {
-                    sendMessage(sender, "no-permission");
-                    return true;
-                }
-                if (args.length < 3) {
-                    sendMessage(sender, "command-usage");
-                    return true;
-                }
-                handleEnableDisable(sender, args[0], args[1], args[2]);
-                return true;
-
-            default:
-                sendHelp(sender);
-                return true;
+                Boolean target = sub.equals("toggle") ? null : sub.equals("enable");
+                handleSet(sender, args[1], args[2], target);
+            }
         }
+        return true;
     }
 
-    private void handleStatus(CommandSender sender, String portalType) {
-        if (portalType == null) {
-            // Show status for all portals
+    private void handleStatus(CommandSender sender, String portalArg) {
+        if (portalArg == null) {
             sendMessage(sender, "portal-status");
-            showPortalStatus(sender, "nether");
-            showPortalStatus(sender, "end");
+            for (PortalType portal : PortalType.values()) {
+                showPortalStatus(sender, portal);
+            }
             return;
         }
 
-        // Show status for specific portal
-        switch (portalType.toLowerCase()) {
-            case "nether":
-            case "end":
-                showPortalStatus(sender, portalType.toLowerCase());
-                break;
-            default:
-                sendMessage(sender, "invalid-portal-type");
-                break;
-        }
-    }
-
-    private void showPortalStatus(CommandSender sender, String portalType) {
-        boolean entryEnabled = configManager.getConfig().getBoolean("portals." + portalType + ".entry.enabled", true);
-        boolean creationEnabled = configManager.getConfig().getBoolean("portals." + portalType + ".creation.enabled", true);
-        String portalName = portalType.substring(0, 1).toUpperCase() + portalType.substring(1);
-        String entryStatus = messageManager.getMessagesConfig().getString(entryEnabled ? "status-enabled" : "status-disabled");
-        String creationStatus = messageManager.getMessagesConfig().getString(creationEnabled ? "status-enabled" : "status-disabled");
-        sendMessage(sender, "portal-status-single", 
-            "portal", portalName,
-            "entry-status", entryStatus,
-            "creation-status", creationStatus);
-    }
-
-    private void handleEnableDisable(CommandSender sender, String action, String portalType, String mode) {
-        if (mode == null) {
-            sendMessage(sender, "command-usage");
+        PortalType portal = parsePortal(portalArg);
+        if (portal == null) {
+            sendMessage(sender, "invalid-portal-type");
             return;
         }
+        showPortalStatus(sender, portal);
+    }
 
-        // Validate mode
-        if (!mode.equalsIgnoreCase("entry") && !mode.equalsIgnoreCase("creation")) {
+    private void showPortalStatus(CommandSender sender, PortalType portal) {
+        sendMessage(sender, "portal-status-header", "portal", portalName(portal));
+        for (Action action : Action.values()) {
+            boolean configEnabled = configManager.isPortalEnabled(portal, action);
+            Map<String, String> locks = api.getLocks(portal, action);
+            boolean effective = configEnabled && locks.isEmpty();
+            sendLine(sender, "portal-status-line",
+                    "mode", modeName(sender, action),
+                    "effective-status", statusText(effective),
+                    "config-status", statusText(configEnabled));
+            locks.forEach((owner, reason) -> sendLine(sender, "portal-status-lock",
+                    "plugin", escape(owner),
+                    "reason", escape(reason)));
+        }
+    }
+
+    /** @param target {@code true}/{@code false} to enable/disable, {@code null} to toggle */
+    private void handleSet(CommandSender sender, String portalArg, String modeArg, Boolean target) {
+        Action action = parseAction(modeArg);
+        if (action == null) {
             sendMessage(sender, "invalid-mode");
             return;
         }
-
-        boolean enable = action.equalsIgnoreCase("enable");
-        String portalName = portalType.substring(0, 1).toUpperCase() + portalType.substring(1);
-        String modeKey = "mode-" + mode.toLowerCase();
-        Component modeComponent = messageManager.getMessage(modeKey, sender instanceof Player ? (Player) sender : null, false, true);
-        String modeName = modeComponent != null ? PlainTextComponentSerializer.plainText().serialize(modeComponent) : mode;
-        
-        switch (portalType.toLowerCase()) {
-            case "nether":
-                configManager.getConfig().set("portals.nether." + mode + ".enabled", enable);
-                configManager.saveConfig();
-                sendMessage(sender, enable ? "portal-enabled" : "portal-disabled",
-                    "portal", portalName,
-                    "mode", modeName);
-                break;
-            case "end":
-                configManager.getConfig().set("portals.end." + mode + ".enabled", enable);
-                configManager.saveConfig();
-                sendMessage(sender, enable ? "portal-enabled" : "portal-disabled",
-                    "portal", portalName,
-                    "mode", modeName);
-                break;
-            default:
-                sendMessage(sender, "invalid-portal-type");
-                break;
-        }
-    }
-
-    private void handleToggle(CommandSender sender, String portalType, String mode) {
-        if (mode == null) {
-            sendMessage(sender, "command-usage");
+        PortalType portal = parsePortal(portalArg);
+        if (portal == null) {
+            sendMessage(sender, "invalid-portal-type");
             return;
         }
 
-        // Validate mode
-        if (!mode.equalsIgnoreCase("entry") && !mode.equalsIgnoreCase("creation")) {
+        boolean newState = target != null ? target : !configManager.isPortalEnabled(portal, action);
+        configManager.setPortalEnabled(portal, action, newState);
+
+        String portalName = portalName(portal);
+        String modeName = modeName(sender, action);
+        if (!newState) {
+            sendMessage(sender, "portal-disabled", "portal", portalName, "mode", modeName);
+            return;
+        }
+
+        Map<String, String> locks = api.getLocks(portal, action);
+        if (locks.isEmpty()) {
+            sendMessage(sender, "portal-enabled", "portal", portalName, "mode", modeName);
+        } else {
+            sendMessage(sender, "portal-enabled-but-locked",
+                    "portal", portalName,
+                    "mode", modeName,
+                    "plugins", joinEscaped(locks.keySet()));
+        }
+    }
+
+    private void handleUnlock(CommandSender sender, String portalArg, String modeArg, String pluginArg) {
+        Action action = parseAction(modeArg);
+        if (action == null) {
             sendMessage(sender, "invalid-mode");
             return;
         }
-
-        switch (portalType.toLowerCase()) {
-            case "nether":
-                togglePortal(sender, "nether", mode);
-                break;
-            case "end":
-                togglePortal(sender, "end", mode);
-                break;
-            default:
-                sendMessage(sender, "invalid-portal-type");
-                break;
+        PortalType portal = parsePortal(portalArg);
+        if (portal == null) {
+            sendMessage(sender, "invalid-portal-type");
+            return;
         }
-    }
 
-    private void togglePortal(CommandSender sender, String portalType, String mode) {
-        boolean currentState = configManager.getConfig().getBoolean("portals." + portalType + "." + mode + ".enabled", true);
-        boolean newState = !currentState;
-        configManager.getConfig().set("portals." + portalType + "." + mode + ".enabled", newState);
-        configManager.saveConfig();
-        String portalName = portalType.substring(0, 1).toUpperCase() + portalType.substring(1);
-        String modeKey = "mode-" + mode.toLowerCase();
-        Component modeComponent = messageManager.getMessage(modeKey, sender instanceof Player ? (Player) sender : null, false, true);
-        String modeName = modeComponent != null ? PlainTextComponentSerializer.plainText().serialize(modeComponent) : mode;
-        sendMessage(sender, newState ? "portal-enabled" : "portal-disabled",
-            "portal", portalName,
-            "mode", modeName);
+        Map<String, String> removed = api.adminUnlock(sender, portal, action, pluginArg);
+        String portalName = portalName(portal);
+        String modeName = modeName(sender, action);
+        if (removed.isEmpty()) {
+            sendMessage(sender, "unlock-none", "portal", portalName, "mode", modeName);
+            return;
+        }
+        sendMessage(sender, "unlock-success",
+                "portal", portalName,
+                "mode", modeName,
+                "count", String.valueOf(removed.size()),
+                "plugins", joinEscaped(removed.keySet()));
     }
 
     private void sendHelp(CommandSender sender) {
@@ -200,11 +191,66 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
         sendMessage(sender, "help-status");
         sendMessage(sender, "help-enable");
         sendMessage(sender, "help-disable");
+        if (sender.hasPermission(UNLOCK_PERMISSION)) {
+            sendMessage(sender, "help-unlock");
+        }
+    }
+
+    private static PortalType parsePortal(String value) {
+        return switch (value.toLowerCase(Locale.ROOT)) {
+            case "nether" -> PortalType.NETHER;
+            case "end" -> PortalType.END;
+            default -> null;
+        };
+    }
+
+    private static Action parseAction(String value) {
+        return switch (value.toLowerCase(Locale.ROOT)) {
+            case "entry" -> Action.ENTRY;
+            case "creation" -> Action.CREATION;
+            default -> null;
+        };
+    }
+
+    private static String portalName(PortalType portal) {
+        String name = portal.name().toLowerCase(Locale.ROOT);
+        return name.substring(0, 1).toUpperCase(Locale.ROOT) + name.substring(1);
+    }
+
+    private String modeName(CommandSender sender, Action action) {
+        String mode = action.name().toLowerCase(Locale.ROOT);
+        Component modeComponent = messageManager.getMessage("mode-" + mode, asPlayer(sender), false, true);
+        return modeComponent != null ? PlainTextComponentSerializer.plainText().serialize(modeComponent) : mode;
+    }
+
+    private String statusText(boolean enabled) {
+        return messageManager.getMessagesConfig().getString(enabled ? "status-enabled" : "status-disabled");
+    }
+
+    /** Plugin names and lock reasons come from other plugins; never let them inject MiniMessage tags. */
+    private static String escape(String text) {
+        return MiniMessage.miniMessage().escapeTags(text);
+    }
+
+    private static String joinEscaped(Collection<String> names) {
+        return names.stream().map(PortalCommand::escape).collect(Collectors.joining(", "));
+    }
+
+    private static Player asPlayer(CommandSender sender) {
+        return sender instanceof Player player ? player : null;
     }
 
     private void sendMessage(CommandSender sender, String key, String... replacements) {
-        Player player = sender instanceof Player ? (Player) sender : null;
-        Component message = messageManager.getMessage(key, player, true, true, replacements);
+        send(sender, key, true, replacements);
+    }
+
+    /** Continuation line of a multi-line output: no prefix. */
+    private void sendLine(CommandSender sender, String key, String... replacements) {
+        send(sender, key, false, replacements);
+    }
+
+    private void send(CommandSender sender, String key, boolean prefix, String... replacements) {
+        Component message = messageManager.getMessage(key, asPlayer(sender), prefix, true, replacements);
         if (message != null) {
             sender.sendMessage(message);
         }
@@ -213,33 +259,30 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
     @Override
     public List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String alias, String[] args) {
         List<String> completions = new ArrayList<>();
+        String sub = args[0].toLowerCase(Locale.ROOT);
 
         if (args.length == 1) {
             completions.addAll(Arrays.asList("reload", "toggle", "status", "enable", "disable"));
-            return completions.stream()
-                    .filter(s -> s.toLowerCase().startsWith(args[0].toLowerCase()))
-                    .toList();
-        }
-
-        if (args.length == 2 && (args[0].equalsIgnoreCase("toggle") || 
-                               args[0].equalsIgnoreCase("enable") || 
-                               args[0].equalsIgnoreCase("disable") ||
-                               args[0].equalsIgnoreCase("status"))) {
+            if (sender.hasPermission(UNLOCK_PERMISSION)) {
+                completions.add("unlock");
+            }
+        } else if (args.length == 2 && List.of("toggle", "enable", "disable", "status", "unlock").contains(sub)) {
             completions.addAll(Arrays.asList("nether", "end"));
-            return completions.stream()
-                    .filter(s -> s.toLowerCase().startsWith(args[1].toLowerCase()))
-                    .toList();
-        }
-
-        if (args.length == 3 && (args[0].equalsIgnoreCase("toggle") || 
-                               args[0].equalsIgnoreCase("enable") || 
-                               args[0].equalsIgnoreCase("disable"))) {
+        } else if (args.length == 3 && List.of("toggle", "enable", "disable", "unlock").contains(sub)) {
             completions.addAll(Arrays.asList("entry", "creation"));
-            return completions.stream()
-                    .filter(s -> s.toLowerCase().startsWith(args[2].toLowerCase()))
-                    .toList();
+        } else if (args.length == 4 && sub.equals("unlock") && sender.hasPermission(UNLOCK_PERMISSION)) {
+            PortalType portal = parsePortal(args[1]);
+            Action action = parseAction(args[2]);
+            completions.addAll(portal != null && action != null
+                    ? api.getLocks(portal, action).keySet()
+                    : api.getAllLockHolders());
+        } else {
+            return completions;
         }
 
-        return completions;
+        String typed = args[args.length - 1].toLowerCase(Locale.ROOT);
+        return completions.stream()
+                .filter(s -> s.toLowerCase(Locale.ROOT).startsWith(typed))
+                .toList();
     }
-} 
+}

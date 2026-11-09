@@ -1,10 +1,12 @@
 package dev.choke.portalToggler.listeners;
 
 import dev.choke.portalToggler.PortalToggler;
-import dev.choke.portalToggler.config.ConfigManager;
+import dev.choke.portalToggler.api.PortalTogglerAPI;
 import dev.choke.portalToggler.config.MessageManager;
 import net.kyori.adventure.text.Component;
+import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
@@ -17,13 +19,15 @@ import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.world.PortalCreateEvent;
 import org.bukkit.event.entity.EntityPortalEvent;
 
-public class PortalManager implements Listener {
-    private final ConfigManager configManager;
-    private final MessageManager messageManager;
+import java.util.Locale;
 
-    public PortalManager(PortalToggler plugin) {
-        this.configManager = plugin.getConfigManager();
+public class PortalManager implements Listener {
+    private final MessageManager messageManager;
+    private final PortalTogglerAPI api;
+
+    public PortalManager(PortalToggler plugin, PortalTogglerAPI api) {
         this.messageManager = plugin.getMessages();
+        this.api = api;
     }
 
     @EventHandler
@@ -101,8 +105,15 @@ public class PortalManager implements Listener {
 
     @EventHandler
     public void onEntityPortal(EntityPortalEvent event) {
+        // getTo() is @Nullable (e.g. no destination could be found)
+        Location to = event.getTo();
+        if (to == null || to.getWorld() == null) {
+            return;
+        }
+        World.Environment destination = to.getWorld().getEnvironment();
+
         // Handle Nether Portal
-        if (event.getTo().getWorld().getEnvironment() == org.bukkit.World.Environment.NETHER) {
+        if (destination == World.Environment.NETHER) {
             if (!isPortalEnabled("nether")) {
                 event.setCancelled(true);
                 return;
@@ -111,7 +122,7 @@ public class PortalManager implements Listener {
         }
 
         // Handle End Portal
-        if (event.getTo().getWorld().getEnvironment() == org.bukkit.World.Environment.THE_END) {
+        if (destination == World.Environment.THE_END) {
             if (!isPortalEnabled("end")) {
                 event.setCancelled(true);
             }
@@ -119,11 +130,15 @@ public class PortalManager implements Listener {
     }
 
     private boolean isPortalEnabled(String portalType) {
-        return configManager.getConfig().getBoolean("portals." + portalType + ".entry.enabled", true);
+        return api.isEnabled(toPortalType(portalType), PortalTogglerAPI.Action.ENTRY);
     }
 
     private boolean isPortalCreationEnabled(String portalType) {
-        return configManager.getConfig().getBoolean("portals." + portalType + ".creation.enabled", true);
+        return api.isEnabled(toPortalType(portalType), PortalTogglerAPI.Action.CREATION);
+    }
+
+    private static PortalTogglerAPI.PortalType toPortalType(String portalType) {
+        return PortalTogglerAPI.PortalType.valueOf(portalType.toUpperCase(Locale.ROOT));
     }
 
     private void debugLog(String message) {
